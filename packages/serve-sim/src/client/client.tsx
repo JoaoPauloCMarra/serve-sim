@@ -54,6 +54,20 @@ import {
   SIMULATOR_RESIZE_PAGE_TRANSITION,
 } from "./utils/simulator-resize";
 
+// Counter-clockwise cycle, matching Simulator.app's Cmd+Left ("Rotate Left").
+const ROTATE_LEFT_CYCLE: Record<SimulatorOrientation, SimulatorOrientation> = {
+  portrait: "landscape_left",
+  landscape_left: "portrait_upside_down",
+  portrait_upside_down: "landscape_right",
+  landscape_right: "portrait",
+};
+const ROTATE_RIGHT_CYCLE: Record<SimulatorOrientation, SimulatorOrientation> = {
+  portrait: "landscape_right",
+  landscape_right: "portrait_upside_down",
+  portrait_upside_down: "landscape_left",
+  landscape_left: "portrait",
+};
+
 // ─── App ───
 
 type PreviewConfig = NonNullable<Window["__SIM_PREVIEW__"]>;
@@ -367,6 +381,17 @@ function AppWithConfig({
   const rotateDevice = useCallback((orientation: SimulatorOrientation) => {
     sendWs(0x07, { orientation });
   }, [sendWs]);
+  const currentOrientation =
+    (activeStreamConfig as { orientation?: SimulatorOrientation }).orientation ?? "portrait";
+  const canRotate = deviceType !== "watch" && deviceType !== "vision";
+  const rotateBy = useCallback(
+    (direction: "left" | "right") => {
+      if (!canRotate) return;
+      const next = (direction === "left" ? ROTATE_LEFT_CYCLE : ROTATE_RIGHT_CYCLE)[currentOrientation];
+      rotateDevice(next);
+    },
+    [canRotate, currentOrientation, rotateDevice],
+  );
 
   useEffect(() => {
     setLiveStreamConfig(null);
@@ -495,6 +520,13 @@ function AppWithConfig({
         if (type === "down" && !e.repeat) sendWs(0x04, { button: "home" });
         return;
       }
+      if ((e.code === "ArrowLeft" || e.code === "ArrowRight") && e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (type === "down" && !e.repeat) {
+          rotateBy(e.code === "ArrowLeft" ? "left" : "right");
+        }
+        return;
+      }
       if (e.code === "KeyA" && e.metaKey && e.shiftKey) {
         e.preventDefault();
         if (type === "down" && !e.repeat) {
@@ -520,7 +552,7 @@ function AppWithConfig({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [sendWs, config.device]);
+  }, [sendWs, config.device, rotateBy]);
 
   const switchToDevice = useCallback(async (d: SimDevice) => {
     if (switching || d.udid === config.device) return;
