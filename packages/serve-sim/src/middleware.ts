@@ -252,6 +252,14 @@ function queryDevice(rawUrl: string): string | null {
   return new URLSearchParams(rawUrl.slice(qIndex + 1)).get("device");
 }
 
+export function queryLogLevel(rawUrl: string): "debug" | "info" | "default" {
+  const qIndex = rawUrl.indexOf("?");
+  if (qIndex === -1) return "info";
+  const value = new URLSearchParams(rawUrl.slice(qIndex + 1)).get("level");
+  if (value === "debug" || value === "default") return value;
+  return "info";
+}
+
 function endpoint(base: string, path: string, device: string): string {
   const value = `${base}${path}`;
   return `${value}?device=${encodeURIComponent(device)}`;
@@ -1115,6 +1123,7 @@ export function simMiddleware(options?: SimMiddlewareOptions) {
         return;
       }
       const udid = state.device;
+      const level = queryLogLevel(rawUrl);
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -1126,7 +1135,7 @@ export function simMiddleware(options?: SimMiddlewareOptions) {
       const child: ChildProcess = spawn("xcrun", [
         "simctl", "spawn", udid, "log", "stream",
         "--style", "ndjson",
-        "--level", "info",
+        "--level", level,
       ], { stdio: ["ignore", "pipe", "ignore"] });
 
       let buf = "";
