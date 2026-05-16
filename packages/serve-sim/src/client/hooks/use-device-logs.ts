@@ -9,6 +9,8 @@ import {
 export type DeviceLogStatus = "idle" | "connecting" | "live" | "error";
 
 const MAX_LOG_ROWS = 1_500;
+const MAX_PENDING_LOG_ROWS = MAX_LOG_ROWS;
+const FLUSH_TIMEOUT_MS = 250;
 
 export function useDeviceLogs({
   endpoint,
@@ -25,6 +27,7 @@ export function useDeviceLogs({
   const nextId = useRef(1);
   const pendingEntries = useRef<DeviceLogEntry[]>([]);
   const frame = useRef<number | null>(null);
+  const flushTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!endpoint || !enabled) {
@@ -34,6 +37,10 @@ export function useDeviceLogs({
 
     const flush = () => {
       frame.current = null;
+      if (flushTimer.current != null) {
+        window.clearTimeout(flushTimer.current);
+        flushTimer.current = null;
+      }
       const pending = pendingEntries.current;
       if (pending.length === 0) return;
       pendingEntries.current = [];
@@ -45,8 +52,18 @@ export function useDeviceLogs({
 
     const enqueue = (entry: DeviceLogEntry) => {
       pendingEntries.current.push(entry);
+      if (pendingEntries.current.length > MAX_PENDING_LOG_ROWS) {
+        pendingEntries.current = pendingEntries.current.slice(-MAX_PENDING_LOG_ROWS);
+      }
       if (frame.current != null) return;
       frame.current = window.requestAnimationFrame(flush);
+      flushTimer.current = window.setTimeout(() => {
+        if (frame.current != null) {
+          window.cancelAnimationFrame(frame.current);
+          frame.current = null;
+        }
+        flush();
+      }, FLUSH_TIMEOUT_MS);
     };
 
     setStatus("connecting");
@@ -81,6 +98,10 @@ export function useDeviceLogs({
         window.cancelAnimationFrame(frame.current);
         frame.current = null;
       }
+      if (flushTimer.current != null) {
+        window.clearTimeout(flushTimer.current);
+        flushTimer.current = null;
+      }
       pendingEntries.current = [];
     };
   }, [endpoint, enabled, streamLevel]);
@@ -95,6 +116,10 @@ export function useDeviceLogs({
       if (frame.current != null) {
         window.cancelAnimationFrame(frame.current);
         frame.current = null;
+      }
+      if (flushTimer.current != null) {
+        window.clearTimeout(flushTimer.current);
+        flushTimer.current = null;
       }
       setEntries([]);
     },
